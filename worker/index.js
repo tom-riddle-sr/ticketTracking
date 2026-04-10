@@ -165,6 +165,9 @@ async function fetchEventTitle(url) {
         .replace(/\s*\|\s*KKTIX\s*$/i, "")
         .replace(/\s*\|\s*iNDIEVOX\s*$/i, "")
         .replace(/\s*[-–|]\s*tixcraft\.com\s*$/i, "")
+        .replace(/\s*[-–|]\s*年代售票\s*$/i, "")
+        .replace(/\s*[-–|]\s*寬宏藝術.*$/i, "")
+        .replace(/\s*\|\s*OPENTIX.*$/i, "")
         .trim()
     }
   } catch (e) {
@@ -240,7 +243,8 @@ async function checkKktix(url) {
   return { available: [], eventTitle, venue: "", eventDate: "" }
 }
 
-async function checkGeneric(url) {
+// 共用：關鍵字比對
+async function checkByKeywords(url, availableKws, soldoutKws) {
   const resp = await fetch(url, {
     headers: {
       "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36",
@@ -248,26 +252,46 @@ async function checkGeneric(url) {
   })
   const html = await resp.text()
   const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ")
-
   const titleMatch = html.match(/<title>([^<]+)<\/title>/)
   const eventTitle = titleMatch ? titleMatch[1].trim() : ""
-
-  const soldoutKeywords = ["sold out", "售完", "完售", "已售完", "缺貨", "暫停販售", "停止販售", "no tickets available"]
-  const availableKeywords = ["remaining", "剩餘", "有票", "立即購票", "buy now", "add to cart", "加入購物車"]
-
   const lowerText = text.toLowerCase()
-  const hasSoldout = soldoutKeywords.some(k => lowerText.includes(k.toLowerCase()))
-  const hasAvailable = availableKeywords.some(k => lowerText.includes(k.toLowerCase()))
-
+  const hasSoldout = soldoutKws.some(k => lowerText.includes(k.toLowerCase()))
+  const hasAvailable = availableKws.some(k => lowerText.includes(k.toLowerCase()))
   if (hasAvailable && !hasSoldout) {
     return { available: ["有票可購買"], eventTitle, venue: "", eventDate: "" }
   }
   return { available: [], eventTitle, venue: "", eventDate: "" }
 }
 
+const COMMON_SOLDOUT = ["售完", "完售", "已售完", "售罄", "暫停販售", "停止販售", "no tickets available", "sold out"]
+const COMMON_AVAILABLE = ["立即購票", "我要購票", "remaining", "剩餘", "有票", "buy now", "add to cart", "加入購物車"]
+
+// 年代 eraticket.com.tw
+async function checkEraticket(url) {
+  return checkByKeywords(url, COMMON_AVAILABLE, COMMON_SOLDOUT)
+}
+
+// 寬宏 kham.com.tw
+async function checkKham(url) {
+  return checkByKeywords(url, COMMON_AVAILABLE, COMMON_SOLDOUT)
+}
+
+// OPENTIX opentix.life（Vue SPA，靜態 HTML 可能不含票況，盡力而為）
+async function checkOpentix(url) {
+  return checkByKeywords(url, COMMON_AVAILABLE, COMMON_SOLDOUT)
+}
+
+// 通用（其他網站）
+async function checkGeneric(url) {
+  return checkByKeywords(url, COMMON_AVAILABLE, COMMON_SOLDOUT)
+}
+
 async function checkUrl(url) {
   if (url.includes("tixcraft.com")) return checkTixcraft(url)
   if (url.includes("kktix.com") || url.includes("kktix.cc")) return checkKktix(url)
+  if (url.includes("eraticket.com.tw")) return checkEraticket(url)
+  if (url.includes("kham.com.tw")) return checkKham(url)
+  if (url.includes("opentix.life")) return checkOpentix(url)
   return checkGeneric(url)
 }
 
@@ -392,7 +416,12 @@ export default {
         "• /list → 查看監控清單\n" +
         "• /check → 立即檢查一次\n" +
         "• /remove <網址> → 移除監控\n\n" +
-        "🌐 支援任何票務網站網址",
+        "✅ 支援平台：\n" +
+        "• 拓元 tixcraft.com\n" +
+        "• KKTIX kktix.com / kktix.cc\n" +
+        "• 年代 eraticket.com.tw\n" +
+        "• 寬宏 kham.com.tw\n" +
+        "• OPENTIX opentix.life",
         token
       )
     }
