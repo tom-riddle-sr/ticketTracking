@@ -177,13 +177,12 @@ async function checkKktix(url) {
     html.includes('"availability":"https://schema.org/InStock"') ||
     html.includes('"availability": "https://schema.org/InStock"')
 
+  // Only use JSON-LD for soldOut — avoid false positives from partial sold-out text on page
   const soldOut =
     html.includes('"availability":"SoldOut"') ||
     html.includes('"availability":"OutOfStock"') ||
     html.includes('"availability":"https://schema.org/SoldOut"') ||
-    html.includes('"availability":"https://schema.org/OutOfStock"') ||
-    html.includes("已額滿") ||
-    html.includes("售完")
+    html.includes('"availability":"https://schema.org/OutOfStock"')
 
   if (inStock && !soldOut) {
     return { available: ["有票可購買"], eventTitle, venue: "", eventDate: "" }
