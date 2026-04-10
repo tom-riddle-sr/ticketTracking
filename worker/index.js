@@ -7,7 +7,7 @@
  *   GITHUB_TOKEN
  *   GITHUB_REPO  (e.g. "yourname/ticketTracking")
  *
- * urls.txt format: one "userId|url" per line (# = comment)
+ * urls.txt format: userId|url|活動名稱  (# = comment, title optional for compat)
  * users.txt format: one userId per line (# = comment)
  */
 
@@ -108,27 +108,69 @@ async function registerUser(env, userId) {
   }
 }
 
-// ── urls.txt helpers (format: userId|url) ────────────────────────────────────
+// ── urls.txt helpers (format: userId|url|title) ───────────────────────────────
+
+function parseLine(line) {
+  // Returns { uid, url, title } or null
+  const trimmed = line.trim()
+  if (!trimmed || trimmed.startsWith("#")) return null
+  const firstBar = trimmed.indexOf("|")
+  if (firstBar === -1) return null
+  const uid = trimmed.slice(0, firstBar).trim()
+  const rest = trimmed.slice(firstBar + 1)
+  const secondBar = rest.indexOf("|")
+  const url = (secondBar === -1 ? rest : rest.slice(0, secondBar)).trim()
+  const title = secondBar === -1 ? "" : rest.slice(secondBar + 1).trim()
+  if (!uid || !url) return null
+  return { uid, url, title }
+}
+
+function getUserEntries(content, userId) {
+  // Returns [{url, title}] for this user
+  return content.split("\n")
+    .map(parseLine)
+    .filter(e => e && e.uid === userId)
+    .map(({ url, title }) => ({ url, title }))
+}
 
 function parseUrlsByUser(content) {
-  // Returns Map<userId, url[]>
+  // Returns Map<userId, {url, title}[]>
   const map = new Map()
   for (const line of content.split("\n")) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith("#")) continue
-    const idx = trimmed.indexOf("|")
-    if (idx === -1) continue
-    const uid = trimmed.slice(0, idx).trim()
-    const url = trimmed.slice(idx + 1).trim()
-    if (!uid || !url) continue
-    if (!map.has(uid)) map.set(uid, [])
-    map.get(uid).push(url)
+    const entry = parseLine(line)
+    if (!entry) continue
+    if (!map.has(entry.uid)) map.set(entry.uid, [])
+    map.get(entry.uid).push({ url: entry.url, title: entry.title })
   }
   return map
 }
 
-function getUserUrls(content, userId) {
-  return parseUrlsByUser(content).get(userId) || []
+// ── Title fetcher ─────────────────────────────────────────────────────────────
+
+async function fetchEventTitle(url) {
+  try {
+    const resp = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36",
+      },
+    })
+    const html = await resp.text()
+    // tixcraft dataLayer title
+    const tlMatch = html.match(/"eventTitle1"\s*:\s*"([^"]+)"/)
+    if (tlMatch) return tlMatch[1]
+    // <title> tag, strip common site suffixes
+    const titleMatch = html.match(/<title>([^<]+)<\/title>/)
+    if (titleMatch) {
+      return titleMatch[1]
+        .replace(/\s*\|\s*KKTIX\s*$/i, "")
+        .replace(/\s*\|\s*iNDIEVOX\s*$/i, "")
+        .replace(/\s*[-–|]\s*tixcraft\.com\s*$/i, "")
+        .trim()
+    }
+  } catch (e) {
+    console.error("fetchEventTitle failed:", e.message)
+  }
+  return ""
 }
 
 // ── Ticket checkers ───────────────────────────────────────────────────────────
@@ -211,7 +253,7 @@ async function checkGeneric(url) {
   const eventTitle = titleMatch ? titleMatch[1].trim() : ""
 
   const soldoutKeywords = ["sold out", "售完", "完售", "已售完", "缺貨", "暫停販售", "停止販售", "no tickets available"]
-  const availableKeywords = ["remaining", "剩餘", "有票", "立即購票", "buy now", "add to cart", "加入購物車", "available"]
+  const availableKeywords = ["remaining", "剩餘", "有票", "立即購票", "buy now", "add to cart", "加入購物車"]
 
   const lowerText = text.toLowerCase()
   const hasSoldout = soldoutKeywords.some(k => lowerText.includes(k.toLowerCase()))
@@ -235,13 +277,14 @@ async function runMonitor(env) {
   const { content } = await getFile(env, URLS_FILE)
   const urlsByUser = parseUrlsByUser(content)
 
-  for (const [userId, urls] of urlsByUser) {
-    for (const url of urls) {
+  for (const [userId, entries] of urlsByUser) {
+    for (const { url, title: storedTitle } of entries) {
       try {
         const { available, eventTitle, venue, eventDate } = await checkUrl(url)
         if (available.length > 0) {
+          const displayTitle = storedTitle || eventTitle
           const lines = ["🎟 有票了！"]
-          if (eventTitle) lines.push(`🎵 ${eventTitle}`)
+          if (displayTitle) lines.push(`🎵 ${displayTitle}`)
           if (venue) lines.push(`📍 ${venue}`)
           if (eventDate) lines.push(`📅 ${eventDate}`)
           lines.push(`\n${available.join("\n")}`)
@@ -283,10 +326,15 @@ export default {
 
       if (text === "/list") {
         const { content } = await getFile(env, URLS_FILE)
-        const urls = getUserUrls(content, userId)
-        await reply(rt, urls.length
-          ? `📋 你的監控網址（${urls.length} 個）：\n\n${urls.join("\n")}`
-          : "你目前沒有監控任何網址", token)
+        const entries = getUserEntries(content, userId)
+        if (!entries.length) {
+          await reply(rt, "你目前沒有監控任何網址", token)
+        } else {
+          const lines = entries.map((e, i) =>
+            `${i + 1}. ${e.title || "（未知活動）"}\n   ${e.url}`
+          )
+          await reply(rt, `📋 你的監控清單（${entries.length} 個）：\n\n${lines.join("\n\n")}`, token)
+        }
         continue
       }
 
@@ -299,9 +347,12 @@ export default {
       if (text.startsWith("/remove ")) {
         const target = text.slice(8).trim()
         const { content, sha } = await getFile(env, URLS_FILE)
-        const entry = `${userId}|${target}`
         const lines = content.split("\n")
-        const filtered = lines.filter(l => l.trim() !== entry)
+        const filtered = lines.filter(l => {
+          const e = parseLine(l)
+          if (!e) return true  // keep comments and blank lines
+          return !(e.uid === userId && e.url === target)
+        })
         if (filtered.length === lines.length) {
           await reply(rt, "找不到這個網址，請用 /list 確認", token)
         } else {
@@ -314,14 +365,20 @@ export default {
       if (text.startsWith("http://") || text.startsWith("https://")) {
         try {
           const { content, sha } = await getFile(env, URLS_FILE)
-          const userUrls = getUserUrls(content, userId)
-          if (userUrls.includes(text)) {
-            await reply(rt, "這個網址已經在監控中了！\n\n用 /list 查看所有監控網址", token)
+          const entries = getUserEntries(content, userId)
+          if (entries.some(e => e.url === text)) {
+            await reply(rt, "這個網址已經在監控中了！\n\n用 /list 查看監控清單", token)
             continue
           }
-          const newContent = content.trimEnd() + "\n" + userId + "|" + text + "\n"
+          const title = await fetchEventTitle(text)
+          const newContent = content.trimEnd() + "\n" + userId + "|" + text + "|" + title + "\n"
           await updateFile(env, URLS_FILE, newContent, sha)
-          await reply(rt, `✅ 已加入監控！\n\n${text}\n\n每 5 分鐘檢查一次，有票會通知你 🎟`, token)
+          await reply(rt,
+            `✅ 已加入監控！\n\n` +
+            (title ? `🎵 ${title}\n` : "") +
+            `🔗 ${text}\n\n每 5 分鐘檢查一次，有票會通知你 🎟`,
+            token
+          )
         } catch (e) {
           await reply(rt, `❌ 加入失敗：${e.message}`, token)
         }
@@ -332,7 +389,7 @@ export default {
         "🤖 票務監控 Bot\n\n" +
         "📌 使用方式：\n" +
         "• 貼上票務網址 → 加入監控\n" +
-        "• /list → 查看你的監控網址\n" +
+        "• /list → 查看監控清單\n" +
         "• /check → 立即檢查一次\n" +
         "• /remove <網址> → 移除監控\n\n" +
         "🌐 支援任何票務網站網址",
