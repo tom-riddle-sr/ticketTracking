@@ -450,6 +450,41 @@ export default {
         continue
       }
 
+      if (text.startsWith("/debug ")) {
+        const debugUrl = text.slice(7).trim()
+        ctx.waitUntil((async () => {
+          try {
+            const resp = await fetch(debugUrl, {
+              headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36" },
+            })
+            const html = await resp.text()
+            const status = resp.status
+            const has立即購票 = html.includes("立即購票")
+            const has立即訂購 = html.includes("立即訂購")
+            const has我要購票 = html.includes("我要購票")
+            const has售完 = html.includes("售完")
+            const has已售完 = html.includes("已售完")
+            const hasInStock = html.includes('"availability":"InStock"') || html.includes('"availability": "InStock"')
+            const titleMatch = html.match(/<title>([^<]+)<\/title>/)
+            const title = titleMatch ? titleMatch[1].trim() : "（找不到）"
+            await pushToUser(userId, [
+              `🔍 Debug: ${debugUrl}`,
+              `HTTP: ${status}`,
+              `Title: ${title}`,
+              `立即購票: ${has立即購票 ? "✅" : "❌"}`,
+              `立即訂購: ${has立即訂購 ? "✅" : "❌"}`,
+              `我要購票: ${has我要購票 ? "✅" : "❌"}`,
+              `售完/已售完: ${(has售完 || has已售完) ? "✅" : "❌"}`,
+              `InStock JSON-LD: ${hasInStock ? "✅" : "❌"}`,
+            ].join("\n"), token)
+          } catch (e) {
+            await pushToUser(userId, `❌ Debug 失敗：${e.message}`, token)
+          }
+        })())
+        await reply(rt, "🔍 Debug 中...", token)
+        continue
+      }
+
       if (text.startsWith("http://") || text.startsWith("https://")) {
         try {
           const { content, sha } = await getFile(env, URLS_FILE)
