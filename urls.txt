@@ -2,3 +2,4 @@
 # 支援：tixcraft.com, kktix.com
 # 範例：
 https://teamear.tixcraft.com/ticket/area/26_crowdtpkh/22185
+https://ruten.kktix.cc/events/kidult2026
