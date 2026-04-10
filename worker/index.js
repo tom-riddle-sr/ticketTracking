@@ -408,17 +408,21 @@ export default {
           continue
         }
         const results = await Promise.all(entries.map(async ({ url, title }) => {
+          const displayTitle = title || url
           try {
-            const { available, eventTitle } = await checkUrl(url)
-            const displayTitle = title || eventTitle || url
-            const hasTicket = available.length > 0
-            return { displayTitle, hasTicket }
+            const checkPromise = checkUrl(url)
+            const timeoutPromise = new Promise((_, reject) =>
+              setTimeout(() => reject(new Error("timeout")), 6000)
+            )
+            const { available, eventTitle } = await Promise.race([checkPromise, timeoutPromise])
+            return { displayTitle: title || eventTitle || url, hasTicket: available.length > 0 }
           } catch (e) {
-            return { displayTitle: title || url, hasTicket: null }
+            const reason = e.message === "timeout" ? "逾時" : "失敗"
+            return { displayTitle, hasTicket: null, reason }
           }
         }))
         const lines = results.map((r, i) => {
-          if (r.hasTicket === null) return `${i + 1}. ❓ ${r.displayTitle}（檢查失敗）`
+          if (r.hasTicket === null) return `${i + 1}. ❓ ${r.displayTitle}（${r.reason || "失敗"}）`
           return r.hasTicket
             ? `${i + 1}. 🎟 ${r.displayTitle}【有票！】`
             : `${i + 1}. ❌ ${r.displayTitle}`
