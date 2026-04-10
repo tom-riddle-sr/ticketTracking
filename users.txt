@@ -1,2 +1,3 @@
 # LINE User IDs — 自動管理，請勿手動編輯
 U7c13dca6defae4ae7047455e8ed7f10c
+U92f334a7b28ed104ae4be3d3f7933fde
