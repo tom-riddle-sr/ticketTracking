@@ -279,9 +279,17 @@ async function checkByKeywords(url, availableKws, soldoutKws) {
 const COMMON_SOLDOUT = ["售完", "完售", "已售完", "售罄", "暫停販售", "停止販售", "no tickets available", "sold out"]
 const COMMON_AVAILABLE = ["立即購票", "我要購票", "remaining", "剩餘", "有票", "buy now", "add to cart", "加入購物車"]
 
-// 年代 ticket.com.tw / eraticket.com.tw（用「立即訂購」）
+// 年代 ticket.com.tw / eraticket.com.tw
+// 有「立即訂購」按鈕 = 有票（部分票種售完不影響判斷）
 async function checkEraticket(url) {
-  return checkByKeywords(url, [...COMMON_AVAILABLE, "立即訂購"], COMMON_SOLDOUT)
+  const resp = await fetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36" },
+  })
+  const html = await resp.text()
+  const titleMatch = html.match(/<title>([^<]+)<\/title>/)
+  const eventTitle = titleMatch ? titleMatch[1].replace(/^年代售票\s*\|\s*/i, "").trim() : ""
+  const hasBuyButton = html.includes("立即訂購")
+  return { available: hasBuyButton ? ["有票可購買"] : [], eventTitle, venue: "", eventDate: "" }
 }
 
 // 寬宏 kham.com.tw
