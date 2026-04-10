@@ -213,6 +213,20 @@ async function checkTixcraft(url) {
   return { available, eventTitle, venue, eventDate }
 }
 
+function checkJsonLdAvailability(html) {
+  const inStock =
+    html.includes('"availability":"InStock"') ||
+    html.includes('"availability": "InStock"') ||
+    html.includes('"availability":"https://schema.org/InStock"') ||
+    html.includes('"availability": "https://schema.org/InStock"')
+  const soldOut =
+    html.includes('"availability":"SoldOut"') ||
+    html.includes('"availability":"OutOfStock"') ||
+    html.includes('"availability":"https://schema.org/SoldOut"') ||
+    html.includes('"availability":"https://schema.org/OutOfStock"')
+  return { inStock, soldOut }
+}
+
 async function checkKktix(url) {
   const resp = await fetch(url, {
     headers: {
@@ -223,21 +237,20 @@ async function checkKktix(url) {
   const titleMatch = html.match(/<title>([^<]+)<\/title>/)
   const eventTitle = titleMatch ? titleMatch[1].replace(/\s*\|\s*KKTIX/i, "").trim() : ""
 
-  // KKTIX JSON-LD uses full schema.org URL or short form
-  const inStock =
-    html.includes('"availability":"InStock"') ||
-    html.includes('"availability": "InStock"') ||
-    html.includes('"availability":"https://schema.org/InStock"') ||
-    html.includes('"availability": "https://schema.org/InStock"')
+  const { inStock, soldOut } = checkJsonLdAvailability(html)
 
-  // Only use JSON-LD for soldOut — avoid false positives from partial sold-out text on page
-  const soldOut =
-    html.includes('"availability":"SoldOut"') ||
-    html.includes('"availability":"OutOfStock"') ||
-    html.includes('"availability":"https://schema.org/SoldOut"') ||
-    html.includes('"availability":"https://schema.org/OutOfStock"')
-
+  // JSON-LD 有明確 InStock：有票
   if (inStock && !soldOut) {
+    return { available: ["有票可購買"], eventTitle, venue: "", eventDate: "" }
+  }
+  // JSON-LD 有明確 SoldOut：售完
+  if (soldOut) {
+    return { available: [], eventTitle, venue: "", eventDate: "" }
+  }
+  // JSON-LD 沒有 availability 資訊：fallback 看「立即購票」按鈕
+  const hasBuyButton = html.includes("立即購票")
+  const hasExplicitSoldout = COMMON_SOLDOUT.some(k => html.includes(k))
+  if (hasBuyButton && !hasExplicitSoldout) {
     return { available: ["有票可購買"], eventTitle, venue: "", eventDate: "" }
   }
   return { available: [], eventTitle, venue: "", eventDate: "" }
@@ -266,9 +279,9 @@ async function checkByKeywords(url, availableKws, soldoutKws) {
 const COMMON_SOLDOUT = ["售完", "完售", "已售完", "售罄", "暫停販售", "停止販售", "no tickets available", "sold out"]
 const COMMON_AVAILABLE = ["立即購票", "我要購票", "remaining", "剩餘", "有票", "buy now", "add to cart", "加入購物車"]
 
-// 年代 eraticket.com.tw
+// 年代 ticket.com.tw / eraticket.com.tw（用「立即訂購」）
 async function checkEraticket(url) {
-  return checkByKeywords(url, COMMON_AVAILABLE, COMMON_SOLDOUT)
+  return checkByKeywords(url, [...COMMON_AVAILABLE, "立即訂購"], COMMON_SOLDOUT)
 }
 
 // 寬宏 kham.com.tw
@@ -276,9 +289,33 @@ async function checkKham(url) {
   return checkByKeywords(url, COMMON_AVAILABLE, COMMON_SOLDOUT)
 }
 
-// OPENTIX opentix.life（Vue SPA，靜態 HTML 可能不含票況，盡力而為）
+// OPENTIX opentix.life（有 JSON-LD，優先用 JSON-LD）
 async function checkOpentix(url) {
-  return checkByKeywords(url, COMMON_AVAILABLE, COMMON_SOLDOUT)
+  const resp = await fetch(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36",
+    },
+  })
+  const html = await resp.text()
+  const titleMatch = html.match(/<title>([^<]+)<\/title>/)
+  const eventTitle = titleMatch ? titleMatch[1].replace(/\s*\|\s*OPENTIX.*/i, "").trim() : ""
+
+  const { inStock, soldOut } = checkJsonLdAvailability(html)
+  if (inStock && !soldOut) {
+    return { available: ["有票可購買"], eventTitle, venue: "", eventDate: "" }
+  }
+  if (soldOut) {
+    return { available: [], eventTitle, venue: "", eventDate: "" }
+  }
+  // fallback：關鍵字
+  const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ")
+  const lowerText = text.toLowerCase()
+  const hasSoldout = COMMON_SOLDOUT.some(k => lowerText.includes(k.toLowerCase()))
+  const hasAvailable = COMMON_AVAILABLE.some(k => lowerText.includes(k.toLowerCase()))
+  if (hasAvailable && !hasSoldout) {
+    return { available: ["有票可購買"], eventTitle, venue: "", eventDate: "" }
+  }
+  return { available: [], eventTitle, venue: "", eventDate: "" }
 }
 
 // 通用（其他網站）
@@ -289,7 +326,7 @@ async function checkGeneric(url) {
 async function checkUrl(url) {
   if (url.includes("tixcraft.com")) return checkTixcraft(url)
   if (url.includes("kktix.com") || url.includes("kktix.cc")) return checkKktix(url)
-  if (url.includes("eraticket.com.tw")) return checkEraticket(url)
+  if (url.includes("eraticket.com.tw") || url.includes("ticket.com.tw")) return checkEraticket(url)
   if (url.includes("kham.com.tw")) return checkKham(url)
   if (url.includes("opentix.life")) return checkOpentix(url)
   return checkGeneric(url)
@@ -419,7 +456,7 @@ export default {
         "✅ 支援平台：\n" +
         "• 拓元 tixcraft.com\n" +
         "• KKTIX kktix.com / kktix.cc\n" +
-        "• 年代 eraticket.com.tw\n" +
+        "• 年代 ticket.com.tw\n" +
         "• 寬宏 kham.com.tw\n" +
         "• OPENTIX opentix.life",
         token
