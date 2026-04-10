@@ -144,19 +144,27 @@ async function checkTixcraft(url) {
   const titleMatch = html.match(/"eventTitle1"\s*:\s*"([^"]+)"/)
   const venueMatch = html.match(/"venue"\s*:\s*"([^"]+)"/)
   const dateMatch = html.match(/"eventDate"\s*:\s*"([^"]+)"/)
-  const eventTitle = titleMatch ? titleMatch[1] : ""
+  const titleTagMatch = html.match(/<title>([^<]+)<\/title>/)
+  const eventTitle = titleMatch ? titleMatch[1] : (titleTagMatch ? titleTagMatch[1].trim() : "")
   const venue = venueMatch ? venueMatch[1] : ""
   const eventDate = dateMatch ? dateMatch[1] : ""
 
-  const available = []
-  const liMatches = html.matchAll(/<li[^>]*class="[^"]*select_form[^"]*"[^>]*>([\s\S]*?)<\/li>/g)
-  for (const match of liMatches) {
-    const text = match[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
-    if (text.includes("remaining") || text.includes("剩餘")) {
-      available.push(text)
+  // Ticket area page: look for remaining seats in select_form list
+  if (url.includes("/ticket/area/")) {
+    const available = []
+    const liMatches = html.matchAll(/<li[^>]*class="[^"]*select_form[^"]*"[^>]*>([\s\S]*?)<\/li>/g)
+    for (const match of liMatches) {
+      const text = match[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+      if (text.includes("remaining") || text.includes("剩餘")) {
+        available.push(text)
+      }
     }
+    return { available, eventTitle, venue, eventDate }
   }
 
+  // Activity detail page: check if any session has 立即購票 button
+  const hasBuyButton = html.includes("立即購票")
+  const available = hasBuyButton ? ["有場次開放購票"] : []
   return { available, eventTitle, venue, eventDate }
 }
 
