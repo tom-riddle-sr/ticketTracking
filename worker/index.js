@@ -401,7 +401,29 @@ export default {
 
       if (text === "/check") {
         await reply(rt, "⏳ 立即檢查中...", token)
-        await runMonitor(env)
+        const { content } = await getFile(env, URLS_FILE)
+        const entries = getUserEntries(content, userId)
+        if (!entries.length) {
+          await pushToUser(userId, "你目前沒有監控任何網址", token)
+          continue
+        }
+        const results = await Promise.all(entries.map(async ({ url, title }) => {
+          try {
+            const { available, eventTitle } = await checkUrl(url)
+            const displayTitle = title || eventTitle || url
+            const hasTicket = available.length > 0
+            return { displayTitle, hasTicket }
+          } catch (e) {
+            return { displayTitle: title || url, hasTicket: null }
+          }
+        }))
+        const lines = results.map((r, i) => {
+          if (r.hasTicket === null) return `${i + 1}. ❓ ${r.displayTitle}（檢查失敗）`
+          return r.hasTicket
+            ? `${i + 1}. 🎟 ${r.displayTitle}【有票！】`
+            : `${i + 1}. ❌ ${r.displayTitle}`
+        })
+        await pushToUser(userId, `📊 檢查結果：\n\n${lines.join("\n")}`, token)
         continue
       }
 
