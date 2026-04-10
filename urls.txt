@@ -1,3 +1,4 @@
 # 格式：userId|url，一行一個（# 開頭為註解）
 U7c13dca6defae4ae7047455e8ed7f10c|https://teamear.tixcraft.com/ticket/area/26_crowdtpkh/22185
 U7c13dca6defae4ae7047455e8ed7f10c|https://ruten.kktix.cc/events/kidult2026
+U7c13dca6defae4ae7047455e8ed7f10c|https://tixcraft.com/activity/detail/26_billyrrom
