@@ -1,6 +1,6 @@
 # 格式：userId|url|活動名稱（# 開頭為註解）
-U7c13dca6defae4ae7047455e8ed7f10c|https://teamear.tixcraft.com/ticket/area/26_crowdtpkh/22185|
+U7c13dca6defae4ae7047455e8ed7f10c|https://teamear.tixcraft.com/ticket/area/26_crowdtpkh/22185|盧廣仲 HeartBreakFast 傷心早餐店演唱會 2026 ver. 北高雙刀流
 U7c13dca6defae4ae7047455e8ed7f10c|https://ruten.kktix.cc/events/kidult2026|2026 KIDULT 玩聚節｜誰說大人不能玩玩具？
-U7c13dca6defae4ae7047455e8ed7f10c|https://tixcraft.com/activity/detail/26_billyrrom|
+U7c13dca6defae4ae7047455e8ed7f10c|https://tixcraft.com/activity/detail/26_billyrrom|Billyrrom Asia Tour 2026 "Jupiter=" in Taipei
 U7c13dca6defae4ae7047455e8ed7f10c|https://www.indievox.com/activity/detail/26_iv0396303|EmptyORio ALL THE BEST Tour
 U92f334a7b28ed104ae4be3d3f7933fde|https://ruten.kktix.cc/events/kidult2026|2026 KIDULT 玩聚節｜誰說大人不能玩玩具？
