@@ -362,7 +362,7 @@ async function runMonitor(env) {
 // ── Main handlers ─────────────────────────────────────────────────────────────
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     if (request.method !== "POST") return new Response("OK")
 
     const body = await request.text()
@@ -401,33 +401,34 @@ export default {
 
       if (text === "/check") {
         await reply(rt, "⏳ 立即檢查中...", token)
-        const { content } = await getFile(env, URLS_FILE)
-        const entries = getUserEntries(content, userId)
-        if (!entries.length) {
-          await pushToUser(userId, "你目前沒有監控任何網址", token)
-          continue
-        }
-        const results = await Promise.all(entries.map(async ({ url, title }) => {
-          const displayTitle = title || url
-          try {
-            const checkPromise = checkUrl(url)
-            const timeoutPromise = new Promise((_, reject) =>
-              setTimeout(() => reject(new Error("timeout")), 6000)
-            )
-            const { available, eventTitle } = await Promise.race([checkPromise, timeoutPromise])
-            return { displayTitle: title || eventTitle || url, hasTicket: available.length > 0 }
-          } catch (e) {
-            const reason = e.message === "timeout" ? "逾時" : "失敗"
-            return { displayTitle, hasTicket: null, reason }
+        const checkUserId = userId
+        ctx.waitUntil((async () => {
+          const { content } = await getFile(env, URLS_FILE)
+          const entries = getUserEntries(content, checkUserId)
+          if (!entries.length) {
+            await pushToUser(checkUserId, "你目前沒有監控任何網址", token)
+            return
           }
-        }))
-        const lines = results.map((r, i) => {
-          if (r.hasTicket === null) return `${i + 1}. ❓ ${r.displayTitle}（${r.reason || "失敗"}）`
-          return r.hasTicket
-            ? `${i + 1}. 🎟 ${r.displayTitle}【有票！】`
-            : `${i + 1}. ❌ ${r.displayTitle}`
-        })
-        await pushToUser(userId, `📊 檢查結果：\n\n${lines.join("\n")}`, token)
+          const results = await Promise.all(entries.map(async ({ url, title }) => {
+            const displayTitle = title || url
+            try {
+              const { available, eventTitle } = await Promise.race([
+                checkUrl(url),
+                new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 6000)),
+              ])
+              return { displayTitle: title || eventTitle || url, hasTicket: available.length > 0 }
+            } catch (e) {
+              return { displayTitle, hasTicket: null, reason: e.message === "timeout" ? "逾時" : "失敗" }
+            }
+          }))
+          const lines = results.map((r, i) => {
+            if (r.hasTicket === null) return `${i + 1}. ❓ ${r.displayTitle}（${r.reason}）`
+            return r.hasTicket
+              ? `${i + 1}. 🎟 ${r.displayTitle}【有票！】`
+              : `${i + 1}. ❌ ${r.displayTitle}`
+          })
+          await pushToUser(checkUserId, `📊 檢查結果：\n\n${lines.join("\n")}`, token)
+        })())
         continue
       }
 
