@@ -350,15 +350,25 @@ async function runMonitor(env) {
     for (const { url, title: storedTitle } of entries) {
       try {
         const { available, eventTitle, venue, eventDate } = await checkUrl(url)
-        if (available.length > 0) {
-          const displayTitle = storedTitle || eventTitle
-          const lines = ["🎟 有票了！"]
-          if (displayTitle) lines.push(`🎵 ${displayTitle}`)
-          if (venue) lines.push(`📍 ${venue}`)
-          if (eventDate) lines.push(`📅 ${eventDate}`)
-          lines.push(`\n${available.join("\n")}`)
-          lines.push(`\n🔗 ${url}`)
-          await pushToUser(userId, lines.join("\n"), env.LINE_CHANNEL_ACCESS_TOKEN)
+        const hasTicket = available.length > 0
+        const kvKey = `${userId}|${url}`
+        const prevState = await env.TICKET_STATE.get(kvKey)  // "1" = 上次有票, null/其他 = 沒票
+
+        if (hasTicket) {
+          await env.TICKET_STATE.put(kvKey, "1")
+          if (prevState !== "1") {
+            // 狀態改變：沒票 → 有票，才發通知
+            const displayTitle = storedTitle || eventTitle
+            const lines = ["🎟 有票了！"]
+            if (displayTitle) lines.push(`🎵 ${displayTitle}`)
+            if (venue) lines.push(`📍 ${venue}`)
+            if (eventDate) lines.push(`📅 ${eventDate}`)
+            lines.push(`\n${available.join("\n")}`)
+            lines.push(`\n🔗 ${url}`)
+            await pushToUser(userId, lines.join("\n"), env.LINE_CHANNEL_ACCESS_TOKEN)
+          }
+        } else {
+          await env.TICKET_STATE.put(kvKey, "0")
         }
       } catch (e) {
         console.error(`Error checking ${url} for ${userId}: ${e.message}`)
