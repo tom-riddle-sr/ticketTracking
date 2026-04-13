@@ -1,9 +1,7 @@
 name: Ticket Monitor
 
 on:
-  schedule:
-    - cron: "*/5 * * * *"
-  workflow_dispatch:
+  workflow_dispatch:  # 只保留手動觸發，停用自動排程
 
 jobs:
   check:
